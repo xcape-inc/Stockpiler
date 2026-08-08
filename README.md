@@ -3,15 +3,20 @@
 #### Description: GitHub crawler that leverages the <a href="https://github.com/nomi-sec/PoC-in-GitHub">PoC-in-GitHub</a> repository to get the latest updates for the different public CVE PoCs.
 
 ### Tools:
-#### - `stockpiler-stager.sh` - Stager for Stockpiler. Pulls CVE PoC GitHub URLs from the PoC-in-GitHub and builds appropriate folders on the file system within the project folder.
-#### - `stockpiler-stat.sh` - Shows total entries in  Stockpiler, seperating the CVEs and total PoCs available.
-#### - `stockpiler-update.sh` - Updates Stockpiler by running `git pull` against the PoC-in-GitHub cloned repo within the project folder, then clones all the newly found CVEs and their respective PoCs.
-#### - `stockpiler-search.sh` - Allows the user to search the PoC-in-GitHub repo for CVE IDs or services, such as Citrix, Fortinet, or Ivanti, etc.
+#### - `stockpiler.sh` — single entrypoint for update, stats, and search.
+
+```
+./stockpiler.sh update             # sync index + clone any missing PoCs (idempotent)
+./stockpiler.sh stat               # collection / disk stats
+./stockpiler.sh search <query>     # search local repos.txt (CVE ID or string)
+```
+
+`update` is safe to re-run: it pulls PoC-in-GitHub (or clones it on first run), ensures `repos.txt` is complete, and only clones repos that are not already on disk. Git operations are non-interactive (`GIT_TERMINAL_PROMPT=0`); failed clones skip the rate-limit delay.
 
 ### Dependencies:
-#### - `ripgrep` - used to quickly search through the PoC-in-GitHub repo for CVE IDs or specific queries, used in the `stockpiler-search.sh` script.
 #### - `jq` - used to parse the JSON files for each CVE PoC within the PoC-in-GitHub repo
 #### - `wc` - used to get the line count of all captured CVEs and PoCs. Should be installed on Debian by default, but you may want to double check.
+#### - `dust` (optional) - hierarchical disk usage in `stat`; falls back to `du` if missing.
 
 ### PoC-in-GitHub Dislaimer:
 #### As mentioned on the repository, some of these published PoCs are fake, scams, or may contain malware to infect the user of the PoC once downloaded and executed on the user's computer. Please read the source code of every PoC before compiling/executing. Report all malicious repositories collected by their bot to their Issues section of their <a href="https://github.com/nomi-sec/PoC-in-GitHub/issues">repo</a>.
@@ -25,7 +30,7 @@
 ### Optimal Configuration
 #### Given the frequency in which the PoC-in-GitHub is updated, we recommend setting up a cronjob to run every 6 hours. An example is shown below:
 
-<code>0 */6 * * * /opt/Stockpiler/stockpiler-update.sh</code>
+<code>0 */6 * * * /opt/Stockpiler/stockpiler.sh update</code>
 
 ### Stockpiler Stats
 <pre>
