@@ -1,9 +1,27 @@
 # Stockpiler
 ##### Created by M4x 5yn74x (Credited to <a href="https://github.com/nomi-sec/">Nomi-sec</a>)
-#### Description: GitHub crawler that leverages the <a href="https://github.com/nomi-sec/PoC-in-GitHub">PoC-in-GitHub</a> repository to get the latest updates for the different public CVE PoCs.
+#### Description: GitHub crawler that leverages the <a href="https://github.com/nomi-sec/PoC-in-GitHub">PoC-in-GitHub</a> repository to get the latest updates for the different public CVE PoCs. Includes a read-only MCP server so agents can pull PoC code into context over the LAN.
 
-### Tools:
-#### - `stockpiler.sh` — single entrypoint for update, stats, and search.
+### Install
+
+Full walkthrough: **[docs/INSTALL.md](docs/INSTALL.md)**
+
+```bash
+# Collector (data host)
+export STOCKPILER_ROOT=/mnt/drop/stockpiler-data
+./stockpiler.sh update
+
+# MCP server (data host)
+sudo ./scripts/install-mcp-server.sh --root /mnt/drop/stockpiler-data
+
+# MCP client (Cursor machine)
+./scripts/install-mcp-client.sh --url http://galactus.lan:1337/mcp
+```
+
+Default MCP endpoint: `http://<host>:1337/mcp` (dev: HTTP, no auth). Production mode adds TLS + API keys via `/etc/stockpiler-mcp.env`.
+
+### Tools
+#### - `stockpiler.sh` — collector: update, stats, and search.
 
 ```
 ./stockpiler.sh update             # sync index + clone any missing PoCs (idempotent)
@@ -13,10 +31,15 @@
 
 `update` is safe to re-run: it pulls PoC-in-GitHub (or clones it on first run), ensures `repos.txt` is complete, and only clones repos that are not already on disk. Git operations are non-interactive (`GIT_TERMINAL_PROMPT=0`); failed clones skip the rate-limit delay.
 
+Data lives under `STOCKPILER_ROOT` (or `./data`, or a legacy checkout that already contains `CVE-*`).
+
+#### - MCP server (`mcp/server.py`) — read-only tools for remote clients: `search_cves`, `list_pocs`, `get_poc_context`, `read_poc_file`.
+
 ### Dependencies:
 #### - `jq` - used to parse the JSON files for each CVE PoC within the PoC-in-GitHub repo
 #### - `wc` - used to get the line count of all captured CVEs and PoCs. Should be installed on Debian by default, but you may want to double check.
-#### - `dust` (optional) - hierarchical disk usage in `stat`; falls back to `du` if missing.
+#### - `du` - disk usage in `stat` (standard Unix utility).
+#### - Python 3.11+ and packages in `mcp/requirements.txt` - for the MCP server (installed by `scripts/install-mcp-server.sh`).
 
 ### PoC-in-GitHub Dislaimer:
 #### As mentioned on the repository, some of these published PoCs are fake, scams, or may contain malware to infect the user of the PoC once downloaded and executed on the user's computer. Please read the source code of every PoC before compiling/executing. Report all malicious repositories collected by their bot to their Issues section of their <a href="https://github.com/nomi-sec/PoC-in-GitHub/issues">repo</a>.
@@ -30,7 +53,7 @@
 ### Optimal Configuration
 #### Given the frequency in which the PoC-in-GitHub is updated, we recommend setting up a cronjob to run every 6 hours. An example is shown below:
 
-<code>0 */6 * * * /opt/Stockpiler/stockpiler.sh update</code>
+<code>0 */6 * * * STOCKPILER_ROOT=/mnt/drop/stockpiler-data /opt/Stockpiler/stockpiler.sh update</code>
 
 ### Stockpiler Stats
 <pre>

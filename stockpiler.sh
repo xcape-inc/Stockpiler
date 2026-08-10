@@ -5,9 +5,16 @@
 #   ./stockpiler.sh update             Sync index + clone any missing PoC repos (idempotent)
 #   ./stockpiler.sh stat               Print collection / disk stats
 #   ./stockpiler.sh search <query>     Search local repos.txt for a CVE or string
+#
+# Data root (STOCKPILER_ROOT):
+#   1. $STOCKPILER_ROOT if set
+#   2. <repo>/data if it exists
+#   3. <repo> if it already contains CVE-* or PoC-in-GitHub (legacy)
+#   4. otherwise <repo>/data (created on update)
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIGREPO="PoC-in-GitHub"
 PIGURL="https://github.com/nomi-sec/PoC-in-GitHub"
 CLONE_DELAY=5
@@ -17,6 +24,25 @@ export GIT_TERMINAL_PROMPT=0
 export GIT_ASKPASS=true
 export SSH_ASKPASS=true
 export SSH_ASKPASS_REQUIRE=never
+
+resolve_root() {
+    if [ -n "${STOCKPILER_ROOT:-}" ]; then
+        mkdir -p "$STOCKPILER_ROOT"
+        (cd "$STOCKPILER_ROOT" && pwd)
+        return
+    fi
+    if [ -d "$SCRIPT_DIR/data" ]; then
+        (cd "$SCRIPT_DIR/data" && pwd)
+        return
+    fi
+    if compgen -G "$SCRIPT_DIR/CVE-*" > /dev/null \
+        || [ -d "$SCRIPT_DIR/$PIGREPO" ]; then
+        echo "$SCRIPT_DIR"
+        return
+    fi
+    mkdir -p "$SCRIPT_DIR/data"
+    (cd "$SCRIPT_DIR/data" && pwd)
+}
 
 usage() {
     cat <<EOF
@@ -28,6 +54,8 @@ Commands:
   update             Sync PoC-in-GitHub and clone any missing PoC repos (safe to re-run)
   stat               Show collection totals, per-year counts, and disk usage
   search <query>     Search local repos.txt for a CVE ID or string
+
+Data root: \$STOCKPILER_ROOT, else ./data, else legacy script directory.
 EOF
     exit 1
 }
@@ -143,7 +171,8 @@ cmd_update() {
 
 print_totals() {
     echo "Current collection total:"
-    cvetotal=$(find . -maxdepth 1 -type d -name 'CVE-*' 2>/dev/null | wc -l | tr -d ' ')
+    # Count individual CVE dirs (CVE-YYYY/CVE-YYYY-NNNN), not year folders
+    cvetotal=$(find . -mindepth 2 -maxdepth 2 -type d -path './CVE-*/CVE-*' 2>/dev/null | wc -l | tr -d ' ')
     poctotal=0
     if compgen -G 'CVE-*/*/repos.txt' > /dev/null; then
         poctotal=$(cat CVE-*/*/repos.txt 2>/dev/null | wc -l | tr -d ' ')
@@ -160,11 +189,10 @@ cmd_stat() {
         echo "$year - $cveid"
     done
     echo "Calculating disk usage..."
-    if command -v dust >/dev/null 2>&1; then
-        dust -n 23 CVE-*
-    else
-        du -sh CVE-* 2>/dev/null | sort -h | tail -n 23
-        echo "(install 'dust' for hierarchical disk usage)"
+    if compgen -G 'CVE-*' > /dev/null; then
+        du -sh CVE-* 2>/dev/null | sort -h
+        echo "---"
+        du -shc CVE-* 2>/dev/null | tail -n 1
     fi
     echo "Complete."
 }
@@ -201,11 +229,21 @@ cmd_search() {
 main() {
     local cmd="${1:-}"
     shift || true
+
+    case "$cmd" in
+        -h|--help|help|"")
+            usage
+            ;;
+    esac
+
+    ROOT="$(resolve_root)"
+    cd "$ROOT"
+    echo "Stockpiler data root: $ROOT"
+
     case "$cmd" in
         update|up|stage|stager|install) cmd_update "$@" ;;
         stat|stats)                     cmd_stat "$@" ;;
         search|s)                       cmd_search "$@" ;;
-        -h|--help|help|"")              usage ;;
         *)
             echo "Unknown command: $cmd" >&2
             usage

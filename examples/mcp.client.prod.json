@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "stockpiler": {
+      "url": "https://galactus.lan:1337/mcp",
+      "headers": {
+        "Authorization": "Bearer replace-me-with-a-long-random-secret"
+      }
+    }
+  }
+}
