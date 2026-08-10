@@ -14,6 +14,7 @@ MODE="dev"
 HOST="0.0.0.0"
 PORT="1337"
 NON_INTERACTIVE=0
+PYTHON_BIN=""
 
 usage() {
     cat <<EOF
@@ -25,6 +26,7 @@ Options:
   --mode dev|production STOCKPILER_MCP_MODE (default: dev)
   --host ADDR           bind address (default: 0.0.0.0)
   --port N              bind port (default: 1337)
+  --python PATH         Python 3.11+ interpreter (default: auto-detect)
   --non-interactive     require --root; do not prompt
   -h, --help            show this help
 EOF
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
         --mode) MODE="$2"; shift 2 ;;
         --host) HOST="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
+        --python) PYTHON_BIN="$2"; shift 2 ;;
         --non-interactive) NON_INTERACTIVE=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -48,17 +51,41 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "error: python3 not found" >&2
+pick_python() {
+    local cand ver ok
+    if [[ -n "$PYTHON_BIN" ]]; then
+        if [[ ! -x "$PYTHON_BIN" ]] && ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+            echo "error: --python not found or not executable: $PYTHON_BIN" >&2
+            exit 1
+        fi
+        PYTHON_BIN="$(command -v "$PYTHON_BIN" 2>/dev/null || echo "$PYTHON_BIN")"
+        echo "$PYTHON_BIN"
+        return
+    fi
+    for cand in python3.14 python3.13 python3.12 python3.11 python3; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            ok="$("$cand" -c 'import sys; print(int(sys.version_info >= (3, 11)))' 2>/dev/null || echo 0)"
+            if [[ "$ok" == "1" ]]; then
+                command -v "$cand"
+                return
+            fi
+        fi
+    done
+    echo ""
+}
+
+PYTHON_BIN="$(pick_python)"
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo "error: Python 3.11+ is required (system python3 is often too old)." >&2
+    echo "Install one, then re-run (optionally with --python /path/to/python3.12):" >&2
+    echo "  Debian/Ubuntu:  sudo apt install python3.12 python3.12-venv" >&2
+    echo "  RHEL/CentOS:    sudo dnf install python3.12" >&2
+    echo "  Or use deadsnakes / pyenv if your distro only ships 3.8." >&2
     exit 1
 fi
 
-PY_VER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-PY_OK="$(python3 -c 'import sys; print(int(sys.version_info >= (3, 11)))')"
-if [[ "$PY_OK" != "1" ]]; then
-    echo "error: Python 3.11+ required (found $PY_VER)" >&2
-    exit 1
-fi
+PY_VER="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+echo "==> Using $PYTHON_BIN (Python $PY_VER)"
 
 if [[ -z "$ROOT_ARG" ]]; then
     if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
@@ -85,7 +112,7 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 echo "==> Creating venv at $VENV_DIR"
-python3 -m venv "$VENV_DIR"
+"$PYTHON_BIN" -m venv "$VENV_DIR"
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip

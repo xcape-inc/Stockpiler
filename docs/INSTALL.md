@@ -4,7 +4,9 @@
 
 **Collector host (data machine)**
 
-- Python 3.11+
+- Python 3.11+ (`python3.12` recommended; system `python3` may still be 3.8)
+  - Debian/Ubuntu: `sudo apt install python3.12 python3.12-venv`
+  - Or pass an explicit interpreter: `sudo ./scripts/install-mcp-server.sh --python /usr/bin/python3.12 ...`
 - `jq`, `git`
 - Enough disk for the collection (1 TB+ recommended)
 - systemd (for the MCP service)
