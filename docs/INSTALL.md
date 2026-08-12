@@ -4,7 +4,7 @@
 
 **Collector host (data machine)**
 
-- Python 3.11+ (`python3.12` recommended; system `python3` may still be 3.8)
+- Python 3.11+ (`python3.12` recommended; system `python3` may still be older)
   - Debian/Ubuntu: `sudo apt install python3.12 python3.12-venv`
   - Or pass an explicit interpreter: `sudo ./scripts/install-mcp-server.sh --python /usr/bin/python3.12 ...`
 - `jq`, `git`
@@ -30,8 +30,8 @@ Resolution order (script and MCP):
 Recommended layout:
 
 ```text
-/opt/Stockpiler/                 # git checkout (code)
-/mnt/drop/stockpiler-data/       # STOCKPILER_ROOT (CVE-* + PoC-in-GitHub)
+/opt/Stockpiler/              # git checkout (code)
+/var/lib/stockpiler/data/     # STOCKPILER_ROOT (CVE-* + PoC-in-GitHub)
 ```
 
 ### Migrate a legacy tree
@@ -39,7 +39,7 @@ Recommended layout:
 If everything currently lives next to `stockpiler.sh`:
 
 ```bash
-export STOCKPILER_ROOT=/mnt/drop/stockpiler-data
+export STOCKPILER_ROOT=/var/lib/stockpiler/data
 mkdir -p "$STOCKPILER_ROOT"
 cd /path/to/old/Stockpiler
 mv CVE-* PoC-in-GitHub "$STOCKPILER_ROOT"/
@@ -50,14 +50,14 @@ mv CVE-* PoC-in-GitHub "$STOCKPILER_ROOT"/
 ```bash
 git clone <this-repo> /opt/Stockpiler
 cd /opt/Stockpiler
-export STOCKPILER_ROOT=/mnt/drop/stockpiler-data
+export STOCKPILER_ROOT=/var/lib/stockpiler/data
 ./stockpiler.sh update
 ```
 
 Optional cron (every 6 hours):
 
 ```cron
-0 */6 * * * STOCKPILER_ROOT=/mnt/drop/stockpiler-data /opt/Stockpiler/stockpiler.sh update
+0 */6 * * * STOCKPILER_ROOT=/var/lib/stockpiler/data /opt/Stockpiler/stockpiler.sh update
 ```
 
 Commands:
@@ -72,7 +72,7 @@ Commands:
 
 ```bash
 cd /opt/Stockpiler
-sudo ./scripts/install-mcp-server.sh --root /mnt/drop/stockpiler-data
+sudo ./scripts/install-mcp-server.sh --root /var/lib/stockpiler/data
 ```
 
 What the script does:
@@ -86,7 +86,7 @@ Useful flags:
 
 ```bash
 sudo ./scripts/install-mcp-server.sh \
-  --root /mnt/drop/stockpiler-data \
+  --root /var/lib/stockpiler/data \
   --user stockpiler \
   --mode dev \
   --host 0.0.0.0 \
@@ -113,14 +113,14 @@ Default endpoint: `http://<host>:1337/mcp`
 ### Install script
 
 ```bash
-./scripts/install-mcp-client.sh --url http://galactus.lan:1337/mcp
+./scripts/install-mcp-client.sh --url http://stockpiler.example:1337/mcp
 ```
 
 Production (TLS + API key):
 
 ```bash
 ./scripts/install-mcp-client.sh \
-  --url https://galactus.lan:1337/mcp \
+  --url https://stockpiler.example:1337/mcp \
   --token 'your-long-random-secret'
 ```
 
@@ -153,6 +153,17 @@ sudo systemctl restart stockpiler-mcp
 The server refuses to start in production if cert, key, or API keys are missing.
 
 Self-signed certificates: clients must trust the CA/cert (OS trust store or client-specific TLS settings).
+
+## Optional: Nuclei coverage diff
+
+Compare local PoC CVE IDs to [nuclei-templates](https://github.com/projectdiscovery/nuclei-templates):
+
+```bash
+./scripts/diff-nuclei-cves.py \
+  --root /var/lib/stockpiler/data \
+  --templates ~/nuclei-templates \
+  --clone-templates
+```
 
 ## Troubleshooting
 

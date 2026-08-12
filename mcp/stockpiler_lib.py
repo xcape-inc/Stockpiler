@@ -226,7 +226,7 @@ def _shallow_tree(repo_root: Path, max_depth: int = 3, max_entries: int = 200) -
     return lines
 
 
-def _local_clones(cve_dir: Path) -> list[dict[str, Any]]:
+def _local_clones(cve_dir: Path, root: Path | None = None) -> list[dict[str, Any]]:
     clones: list[dict[str, Any]] = []
     if not cve_dir.is_dir():
         return clones
@@ -241,23 +241,48 @@ def _local_clones(cve_dir: Path) -> list[dict[str, Any]]:
             name = url.rstrip("/").split("/")[-1]
             urls_by_name[name] = url
 
+    base = root.resolve() if root is not None else None
     for slot in sorted(cve_dir.iterdir()):
         if not slot.is_dir():
             continue
         for child in sorted(slot.iterdir()):
             if not child.is_dir():
                 continue
-            # skip nested .git only dirs? still a clone root
             reponame = child.name
+            if base is not None:
+                try:
+                    rel = str(child.resolve().relative_to(base))
+                except ValueError:
+                    rel = str(child)
+            else:
+                rel = str(child)
             clones.append(
                 {
                     "slot": slot.name,
                     "repo": reponame,
-                    "path": str(child),
+                    "path": rel,
                     "url": urls_by_name.get(reponame, ""),
                 }
             )
     return clones
+
+
+def _trim_match(
+    entry: dict[str, Any],
+    max_urls: int = 50,
+    max_clones: int = 25,
+) -> dict[str, Any]:
+    """Cap large CVE payloads so MCP clients are not flooded."""
+    urls = entry.get("urls") or []
+    clones = entry.get("local_clones") or []
+    out = dict(entry)
+    out["url_count"] = len(urls)
+    out["clone_count"] = len(clones)
+    out["urls"] = urls[:max_urls]
+    out["local_clones"] = clones[:max_clones]
+    if len(urls) > max_urls or len(clones) > max_clones:
+        out["truncated"] = True
+    return out
 
 
 def search_cves(root: Path, query: str, limit: int = 50) -> dict[str, Any]:
@@ -280,12 +305,14 @@ def search_cves(root: Path, query: str, limit: int = 50) -> dict[str, Any]:
                     for ln in repos_txt.read_text(errors="replace").splitlines()
                     if ln.strip()
                 ]
-            matches[cve] = {
-                "cve_id": cve,
-                "year_dir": cve_dir.parent.name,
-                "urls": urls,
-                "local_clones": _local_clones(cve_dir),
-            }
+            matches[cve] = _trim_match(
+                {
+                    "cve_id": cve,
+                    "year_dir": cve_dir.parent.name,
+                    "urls": urls,
+                    "local_clones": _local_clones(cve_dir, root),
+                }
+            )
             items = list(matches.values())
             return {
                 "caution": MALWARE_CAUTION,
@@ -327,11 +354,13 @@ def search_cves(root: Path, query: str, limit: int = 50) -> dict[str, Any]:
         for url in urls:
             if url not in entry["urls"]:
                 entry["urls"].append(url)
-        for clone in _local_clones(repos_txt.parent):
+        for clone in _local_clones(repos_txt.parent, root):
             if clone not in entry["local_clones"]:
                 entry["local_clones"].append(clone)
 
-    items = sorted(matches.values(), key=lambda m: m["cve_id"])[:limit]
+    items = [
+        _trim_match(m) for m in sorted(matches.values(), key=lambda m: m["cve_id"])[:limit]
+    ]
     return {
         "caution": MALWARE_CAUTION,
         "query": q,
@@ -352,14 +381,18 @@ def list_pocs(root: Path, cve_id: str, max_depth: int = 3) -> dict[str, Any]:
             "pocs": [],
         }
 
-    urls = []
+    urls: list[str] = []
     repos_txt = cve_dir / "repos.txt"
     if repos_txt.is_file():
-        urls = [ln.strip() for ln in repos_txt.read_text(errors="replace").splitlines() if ln.strip()]
+        urls = [
+            ln.strip()
+            for ln in repos_txt.read_text(errors="replace").splitlines()
+            if ln.strip()
+        ]
 
     pocs = []
-    for clone in _local_clones(cve_dir):
-        repo_path = Path(clone["path"])
+    for clone in _local_clones(cve_dir, root):
+        repo_path = (root / clone["path"]).resolve()
         files = list(_iter_repo_files(repo_path, max_depth=max_depth))
         ranked = sorted(files, key=lambda p: _score_entry(p, repo_path), reverse=True)
         candidates = [
@@ -379,31 +412,38 @@ def list_pocs(root: Path, cve_id: str, max_depth: int = 3) -> dict[str, Any]:
             }
         )
 
+    try:
+        cve_rel = str(cve_dir.resolve().relative_to(root.resolve()))
+    except ValueError:
+        cve_rel = str(cve_dir)
+
     return {
         "caution": MALWARE_CAUTION,
         "cve_id": cve,
         "found": True,
-        "cve_dir": str(cve_dir),
-        "urls": urls,
-        "pocs": pocs,
+        "cve_dir": cve_rel,
+        "url_count": len(urls),
+        "urls": urls[:50],
+        "poc_count": len(pocs),
+        "pocs": pocs[:50],
+        "truncated": len(urls) > 50 or len(pocs) > 50,
     }
 
 
-def _find_clone(cve_dir: Path, repo: str | None) -> Path | None:
-    clones = _local_clones(cve_dir)
+def _find_clone(root: Path, cve_dir: Path, repo: str | None) -> Path | None:
+    clones = _local_clones(cve_dir, root)
     if not clones:
         return None
     if repo:
         repo_l = repo.strip().rstrip("/")
-        # accept owner/name or just name
         name = repo_l.split("/")[-1]
         for c in clones:
             if c["repo"] == name or c["repo"] == repo_l:
-                return Path(c["path"])
+                return (root / c["path"]).resolve()
             if c.get("url") and repo_l in c["url"]:
-                return Path(c["path"])
+                return (root / c["path"]).resolve()
         return None
-    return Path(clones[0]["path"])
+    return (root / clones[0]["path"]).resolve()
 
 
 def get_poc_context(
@@ -421,7 +461,7 @@ def get_poc_context(
             "error": f"No local collection for {cve}",
         }
 
-    clone_path = _find_clone(cve_dir, repo)
+    clone_path = _find_clone(root, cve_dir, repo)
     if clone_path is None:
         return {
             "caution": MALWARE_CAUTION,
@@ -456,7 +496,6 @@ def get_poc_context(
             skipped.append({"path": rel, "reason": "budget exhausted", "bytes": size})
             continue
 
-        # Always try to include at least a slice of high-score files
         take = min(size, remaining)
         try:
             text, truncated = _read_text_capped(path, take)
@@ -474,10 +513,15 @@ def get_poc_context(
         )
         used += included[-1]["bytes_read"]
 
+    try:
+        repo_rel = str(clone_path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        repo_rel = str(clone_path)
+
     return {
         "caution": MALWARE_CAUTION,
         "cve_id": cve,
-        "repo_path": str(clone_path),
+        "repo_path": repo_rel,
         "repo": clone_path.name,
         "max_bytes": budget,
         "bytes_used": used,
@@ -499,11 +543,10 @@ def read_poc_file(
     if not cve_dir.is_dir():
         return {"caution": MALWARE_CAUTION, "error": f"No local collection for {cve}"}
 
-    clone_path = _find_clone(cve_dir, repo)
+    clone_path = _find_clone(root, cve_dir, repo)
     if clone_path is None:
         return {"caution": MALWARE_CAUTION, "error": f"Repo not found: {repo}"}
 
-    # Normalize path and sandbox under clone
     rel = path.lstrip("/").replace("\\", "/")
     if ".." in Path(rel).parts:
         raise PermissionError("Path escapes repo root")
@@ -512,7 +555,7 @@ def read_poc_file(
         return {
             "caution": MALWARE_CAUTION,
             "error": f"File not found: {rel}",
-            "repo_path": str(clone_path),
+            "repo": clone_path.name,
         }
 
     if _is_probably_binary(target):

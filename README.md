@@ -8,14 +8,14 @@ Full walkthrough: **[docs/INSTALL.md](docs/INSTALL.md)**
 
 ```bash
 # Collector (data host)
-export STOCKPILER_ROOT=/mnt/drop/stockpiler-data
+export STOCKPILER_ROOT=/var/lib/stockpiler/data
 ./stockpiler.sh update
 
 # MCP server (data host)
-sudo ./scripts/install-mcp-server.sh --root /mnt/drop/stockpiler-data
+sudo ./scripts/install-mcp-server.sh --root /var/lib/stockpiler/data
 
 # MCP client (Cursor machine)
-./scripts/install-mcp-client.sh --url http://galactus.lan:1337/mcp
+./scripts/install-mcp-client.sh --url http://stockpiler.example:1337/mcp
 ```
 
 Default MCP endpoint: `http://<host>:1337/mcp` (dev: HTTP, no auth). Production mode adds TLS + API keys via `/etc/stockpiler-mcp.env`.
@@ -53,7 +53,7 @@ Data lives under `STOCKPILER_ROOT` (or `./data`, or a legacy checkout that alrea
 ### Optimal Configuration
 #### Given the frequency in which the PoC-in-GitHub is updated, we recommend setting up a cronjob to run every 6 hours. An example is shown below:
 
-<code>0 */6 * * * STOCKPILER_ROOT=/mnt/drop/stockpiler-data /opt/Stockpiler/stockpiler.sh update</code>
+<code>0 */6 * * * STOCKPILER_ROOT=/var/lib/stockpiler/data /opt/Stockpiler/stockpiler.sh update</code>
 
 ### Stockpiler Stats
 <pre>

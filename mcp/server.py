@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -43,6 +44,13 @@ class BearerAPIKeyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.api_keys = api_keys
 
+    def _authorized(self, token: str) -> bool:
+        ok = False
+        for key in self.api_keys:
+            if len(token) == len(key) and secrets.compare_digest(token, key):
+                ok = True
+        return ok
+
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method == "OPTIONS":
             return await call_next(request)
@@ -50,7 +58,7 @@ class BearerAPIKeyMiddleware(BaseHTTPMiddleware):
         token = ""
         if auth.lower().startswith("bearer "):
             token = auth[7:].strip()
-        if token not in self.api_keys:
+        if not self._authorized(token):
             return JSONResponse(
                 {"error": "unauthorized"},
                 status_code=401,

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "stockpiler": {
-      "url": "http://galactus.lan:1337/mcp"
+      "url": "http://stockpiler.example:1337/mcp"
     }
   }
 }

@@ -10,7 +10,7 @@ usage() {
     cat <<EOF
 Usage: $0 --url URL [--token TOKEN] [--config PATH]
 
-  --url URL       MCP server URL (e.g. http://galactus.lan:1337/mcp)
+  --url URL       MCP server URL (e.g. http://stockpiler.example:1337/mcp)
   --token TOKEN   Optional bearer token (production)
   --config PATH   Cursor mcp.json path (default: ~/.cursor/mcp.json)
 EOF
