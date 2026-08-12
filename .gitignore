@@ -1,0 +1,7 @@
+mcp/.venv/
+__pycache__/
+*.pyc
+.Python
+data/
+*.egg-info/
+.DS_Store

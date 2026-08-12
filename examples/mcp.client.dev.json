@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "stockpiler": {
+      "url": "http://stockpiler.example:1337/mcp"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=Stockpiler MCP server (read-only CVE PoC lookup)
+After=network.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@REPO_ROOT@/mcp
+EnvironmentFile=-/etc/stockpiler-mcp.env
+ExecStart=@VENV_PYTHON@ @REPO_ROOT@/mcp/server.py
+Restart=on-failure
+RestartSec=5
+# Read-only intent: collector should run as a different writable user/cron.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
