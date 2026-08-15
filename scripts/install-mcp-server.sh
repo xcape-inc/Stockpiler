@@ -162,6 +162,14 @@ if [[ "$MODE" == "dev" ]]; then
     echo "Production later: edit $ENV_PATH (MODE=production, TLS paths, API keys),"
     echo "then: systemctl restart $SERVICE_NAME"
 fi
+if [[ "$MODE" == "dev" && "$HOST" == "0.0.0.0" ]]; then
+    echo
+    echo "WARNING: dev mode + --host 0.0.0.0 means this MCP server is reachable"
+    echo "over every network interface with NO authentication. Anyone who can"
+    echo "reach port ${PORT} can call its tools directly. Fine for a workstation"
+    echo "behind its own firewall; re-run with --host 127.0.0.1 or move to"
+    echo "--mode production (TLS + API keys) for anything else reachable on a LAN."
+fi
 if [[ "$MODE" == "production" ]]; then
     echo "WARNING: production mode requires STOCKPILER_TLS_CERT, STOCKPILER_TLS_KEY,"
     echo "and STOCKPILER_API_KEYS in $ENV_PATH before the service will stay up."
