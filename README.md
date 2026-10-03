@@ -26,6 +26,25 @@ command is configured.
 shell. Converter receives provenance JSON on stdin and returns normalized source
 as base64 JSON. Invalid Python or any signature other than `run(payload)` is
 rejected and never enters active Stockpile.
+
+### PTaaS normalization contract
+
+Published rows use the schema in `stockpiler/schema.sql`. Each active row has a
+stable `poc_id`, one or more `vulnerability_ids`, immutable source URL and
+commit, target constraints, normalized Python bytes, SHA-256, metadata,
+`conversion_status = 'validated'`, and `enabled = true`.
+
+Normalized Python exposes one payload entry point:
+
+```python
+def run(payload: bytes) -> dict:
+    ...
+```
+
+Tailor selects a row by both PoC ID and requested CVE/EUVD, verifies the digest,
+and invokes `run(payload)`. Stockpiler never schedules or executes the PoC. The
+PTaaS integration fixture uses `apache.cve-2021-41773-v1` to prove this contract
+against an isolated Apache 2.4.49 container.
 ##### Created by M4x 5yn74x (Credited to <a href="https://github.com/nomi-sec/">Nomi-sec</a>)
 #### Description: GitHub crawler that leverages the <a href="https://github.com/nomi-sec/PoC-in-GitHub">PoC-in-GitHub</a> repository to get the latest updates for the different public CVE PoCs. Includes a read-only MCP server so agents can pull PoC code into context over the LAN.
 
