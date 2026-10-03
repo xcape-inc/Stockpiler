@@ -18,7 +18,10 @@ docker run --rm -p 8092:8092 \
 ```
 
 `python -m stockpiler.discover --root "$STOCKPILER_ROOT"` continuously
-projects newly cloned GitHub repositories into `stockpile_candidates`.
+refreshes GitHub through `STOCKPILER_UPDATE_COMMAND` and projects newly cloned
+repositories into `stockpile_candidates`. `docker compose up api discover`
+runs API and continuous crawler; converter profile is enabled after a converter
+command is configured.
 `python -m stockpiler.convert` invokes `STOCKPILER_CONVERTER_COMMAND` without a
 shell. Converter receives provenance JSON on stdin and returns normalized source
 as base64 JSON. Invalid Python or any signature other than `run(payload)` is

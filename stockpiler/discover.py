@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -69,16 +70,33 @@ def run_once(root: Path, store: StockpileStore) -> int:
     return len(records)
 
 
+def refresh(command: str) -> None:
+    arguments = shlex.split(command)
+    if not arguments:
+        return
+    subprocess.run(
+        arguments,
+        check=True,
+        timeout=3600,
+        env={
+            "PATH": os.getenv("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "STOCKPILER_ROOT": os.environ.get("STOCKPILER_ROOT", "./data"),
+        },
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", default=os.environ.get("STOCKPILER_ROOT", "./data"))
     parser.add_argument("--interval", type=int, default=900)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--update-command", default=os.environ.get("STOCKPILER_UPDATE_COMMAND", ""))
     args = parser.parse_args()
     if not 60 <= args.interval <= 86400:
         raise ValueError("interval must be between 60 and 86400 seconds")
     store = StockpileStore(os.environ.get("STOCKPILE_DSN", ""))
     while True:
+        refresh(args.update_command)
         count = run_once(Path(args.root), store)
         print(f"projected {count} Stockpile candidates", flush=True)
         if args.once:

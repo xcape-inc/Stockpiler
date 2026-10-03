@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8092:8092"
+    environment:
+      STOCKPILE_DSN: ${STOCKPILE_DSN:?set STOCKPILE_DSN}
+      STOCKPILE_WRITE_TOKEN: ${STOCKPILE_WRITE_TOKEN:?set STOCKPILE_WRITE_TOKEN}
+
+  discover:
+    build: .
+    entrypoint: ["python", "-m", "stockpiler.discover"]
+    environment:
+      STOCKPILE_DSN: ${STOCKPILE_DSN:?set STOCKPILE_DSN}
+      STOCKPILER_ROOT: /var/lib/stockpiler/data
+      STOCKPILER_UPDATE_COMMAND: /opt/stockpiler/stockpiler.sh update
+    volumes:
+      - stockpiler-data:/var/lib/stockpiler/data
+
+  convert:
+    build: .
+    profiles: ["converter"]
+    entrypoint: ["python", "-m", "stockpiler.convert"]
+    environment:
+      STOCKPILE_DSN: ${STOCKPILE_DSN:?set STOCKPILE_DSN}
+      STOCKPILER_CONVERTER_COMMAND: ${STOCKPILER_CONVERTER_COMMAND:?set STOCKPILER_CONVERTER_COMMAND}
+
+volumes:
+  stockpiler-data:
