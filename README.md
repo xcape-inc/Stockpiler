@@ -1,4 +1,28 @@
 # Stockpiler
+
+XCAPE fork adds a PostgreSQL-backed Stockpile service for PTaaS. Existing
+collector discovers GitHub PoCs. New service stores only validated normalized
+Python PoCs. Each record defines exactly `run(payload)` and includes explicit
+CVE/EUVD identifiers, source URL and commit, SHA-256, target constraints, and
+conversion metadata.
+
+Discovered repositories are untrusted. Discovery creates candidates; only
+conversion output passing normalization contract enters `stockpile_pocs`.
+Tailor executes selected PoCs inside its ephemeral container.
+
+```bash
+psql "$STOCKPILE_DSN" -f stockpiler/schema.sql
+docker build -t xcape-stockpiler .
+docker run --rm -p 8092:8092 \
+  -e STOCKPILE_DSN -e STOCKPILE_WRITE_TOKEN xcape-stockpiler
+```
+
+`python -m stockpiler.discover --root "$STOCKPILER_ROOT"` continuously
+projects newly cloned GitHub repositories into `stockpile_candidates`.
+`python -m stockpiler.convert` invokes `STOCKPILER_CONVERTER_COMMAND` without a
+shell. Converter receives provenance JSON on stdin and returns normalized source
+as base64 JSON. Invalid Python or any signature other than `run(payload)` is
+rejected and never enters active Stockpile.
 ##### Created by M4x 5yn74x (Credited to <a href="https://github.com/nomi-sec/">Nomi-sec</a>)
 #### Description: GitHub crawler that leverages the <a href="https://github.com/nomi-sec/PoC-in-GitHub">PoC-in-GitHub</a> repository to get the latest updates for the different public CVE PoCs. Includes a read-only MCP server so agents can pull PoC code into context over the LAN.
 
