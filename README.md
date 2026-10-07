@@ -1,4 +1,57 @@
 # Stockpiler
+
+XCAPE fork adds a PostgreSQL-backed Stockpile service for PTaaS. Existing
+collector discovers GitHub PoCs. New service stores only validated normalized
+Python PoCs. Each record defines exactly `run(payload)` and includes explicit
+CVE/EUVD identifiers, source URL and commit, SHA-256, target constraints, and
+conversion metadata.
+
+Discovered repositories are untrusted. Discovery creates candidates; only
+conversion output passing normalization contract enters `stockpile_pocs`.
+Tailor executes selected PoCs inside its ephemeral container.
+
+```bash
+psql "$STOCKPILE_DSN" -f stockpiler/schema.sql
+docker build -t xcape-stockpiler .
+docker run --rm -p 8092:8092 \
+  -e STOCKPILE_DSN -e STOCKPILE_WRITE_TOKEN xcape-stockpiler
+```
+
+`python -m stockpiler.discover --root "$STOCKPILER_ROOT"` continuously
+refreshes GitHub through `STOCKPILER_UPDATE_COMMAND` and projects newly cloned
+repositories into `stockpile_candidates`. `docker compose up api discover`
+runs API and continuous crawler; converter profile is enabled after a converter
+command is configured.
+`python -m stockpiler.convert` invokes `STOCKPILER_CONVERTER_COMMAND` without a
+shell. Converter receives provenance JSON on stdin and returns normalized source
+as base64 JSON. Invalid Python or any signature other than `run(payload)` is
+rejected and never enters active Stockpile.
+
+Converter workers atomically claim candidates with `FOR UPDATE SKIP LOCKED`
+and a status update in one transaction. Claims older than
+`STOCKPILER_CLAIM_TIMEOUT_SECONDS` (default `900`) are eligible for recovery by
+another worker. The converter profile may remain disabled without setting
+`STOCKPILER_CONVERTER_COMMAND`; a started converter still rejects an empty
+command before processing.
+
+### PTaaS normalization contract
+
+Published rows use the schema in `stockpiler/schema.sql`. Each active row has a
+stable `poc_id`, one or more `vulnerability_ids`, immutable source URL and
+commit, target constraints, normalized Python bytes, SHA-256, metadata,
+`conversion_status = 'validated'`, and `enabled = true`.
+
+Normalized Python exposes one payload entry point:
+
+```python
+def run(payload: bytes) -> dict:
+    ...
+```
+
+Tailor selects a row by both PoC ID and requested CVE/EUVD, verifies the digest,
+and invokes `run(payload)`. Stockpiler never schedules or executes the PoC. The
+PTaaS integration fixture uses `apache.cve-2021-41773-v1` to prove this contract
+against an isolated Apache 2.4.49 container.
 ##### Created by M4x 5yn74x (Credited to <a href="https://github.com/nomi-sec/">Nomi-sec</a>)
 #### Description: GitHub crawler that leverages the <a href="https://github.com/nomi-sec/PoC-in-GitHub">PoC-in-GitHub</a> repository to get the latest updates for the different public CVE PoCs. Includes a read-only MCP server so agents can pull PoC code into context over the LAN.
 
