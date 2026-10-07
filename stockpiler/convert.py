@@ -51,10 +51,14 @@ def convert(candidate: CandidateRecord, command: str, timeout: int = 600):
     return poc, result.get("target_constraints", {}), result.get("metadata", {})
 
 
-def run_once(store: StockpileStore, command: str, limit: int = 10) -> dict[str, int]:
+def run_once(
+    store: StockpileStore,
+    command: str,
+    limit: int = 10,
+    stale_after_seconds: int = 900,
+) -> dict[str, int]:
     counts = {"validated": 0, "rejected": 0}
-    for candidate in store.pending_candidates(limit):
-        store.mark_candidate(candidate.candidate_id, "converting")
+    for candidate in store.claim_candidates(limit, stale_after_seconds):
         try:
             poc, constraints, metadata = convert(candidate, command)
             store.put(poc, constraints=constraints, metadata=metadata)
@@ -74,6 +78,7 @@ def main() -> None:
         StockpileStore(os.environ.get("STOCKPILE_DSN", "")),
         os.environ.get("STOCKPILER_CONVERTER_COMMAND", ""),
         args.limit,
+        int(os.environ.get("STOCKPILER_CLAIM_TIMEOUT_SECONDS", "900")),
     )
     print(json.dumps(result, sort_keys=True))
 

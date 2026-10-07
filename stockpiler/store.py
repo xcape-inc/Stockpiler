@@ -57,20 +57,42 @@ class StockpileStore:
                 (list(identifiers), source_url, source_commit),
             )
 
-    def pending_candidates(self, limit: int = 10) -> list[CandidateRecord]:
+    def claim_candidates(
+        self, limit: int = 10, stale_after_seconds: int = 900
+    ) -> list[CandidateRecord]:
         if not 1 <= limit <= 100:
             raise ValueError("candidate limit must be between 1 and 100")
+        if not 1 <= stale_after_seconds <= 86400:
+            raise ValueError("claim timeout must be between 1 and 86400 seconds")
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT candidate_id, vulnerability_ids, source_url, source_commit
-                FROM stockpile_candidates
-                WHERE conversion_status = 'pending'
-                ORDER BY discovered_at, candidate_id
-                LIMIT %s
-                FOR UPDATE SKIP LOCKED
+                WITH selected AS (
+                    SELECT candidate_id
+                    FROM stockpile_candidates
+                    WHERE conversion_status = 'pending'
+                       OR (
+                           conversion_status = 'converting'
+                           AND (
+                               conversion_claimed_at IS NULL
+                               OR conversion_claimed_at < CURRENT_TIMESTAMP
+                                  - (%s * INTERVAL '1 second')
+                           )
+                       )
+                    ORDER BY discovered_at, candidate_id
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                )
+                UPDATE stockpile_candidates AS candidate
+                SET conversion_status = 'converting',
+                    conversion_claimed_at = CURRENT_TIMESTAMP,
+                    conversion_error = NULL
+                FROM selected
+                WHERE candidate.candidate_id = selected.candidate_id
+                RETURNING candidate.candidate_id, candidate.vulnerability_ids,
+                          candidate.source_url, candidate.source_commit
                 """,
-                (limit,),
+                (stale_after_seconds, limit),
             )
             rows = cursor.fetchall()
             names = [column.name for column in cursor.description]
@@ -90,8 +112,17 @@ class StockpileStore:
             raise ValueError("invalid conversion status")
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE stockpile_candidates SET conversion_status = %s, conversion_error = %s WHERE candidate_id = %s",
-                (status, error[:4096] if error else None, candidate_id),
+                """
+                UPDATE stockpile_candidates
+                SET conversion_status = %s,
+                    conversion_error = %s,
+                    conversion_claimed_at = CASE
+                        WHEN %s = 'converting' THEN CURRENT_TIMESTAMP
+                        ELSE NULL
+                    END
+                WHERE candidate_id = %s
+                """,
+                (status, error[:4096] if error else None, status, candidate_id),
             )
 
     def put(self, poc: NormalizedPoc, *, constraints: dict[str, Any], metadata: dict[str, Any]) -> None:

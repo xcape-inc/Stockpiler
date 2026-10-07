@@ -23,7 +23,7 @@ services:
     entrypoint: ["python", "-m", "stockpiler.convert"]
     environment:
       STOCKPILE_DSN: ${STOCKPILE_DSN:?set STOCKPILE_DSN}
-      STOCKPILER_CONVERTER_COMMAND: ${STOCKPILER_CONVERTER_COMMAND:?set STOCKPILER_CONVERTER_COMMAND}
+      STOCKPILER_CONVERTER_COMMAND: ${STOCKPILER_CONVERTER_COMMAND:-}
 
 volumes:
   stockpiler-data:
