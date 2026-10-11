@@ -25,7 +25,8 @@ class StoreTests(unittest.TestCase):
         self.assertIn("FOR UPDATE SKIP LOCKED", normalized)
         self.assertIn("UPDATE STOCKPILE_CANDIDATES", normalized)
         self.assertIn("RETURNING CANDIDATE.CANDIDATE_ID", normalized)
-        self.assertEqual(parameters, (120, 4))
+        self.assertEqual(parameters[:2], (120, 4))
+        self.assertEqual(len(parameters[2]), 32)
 
 
 if __name__ == "__main__":

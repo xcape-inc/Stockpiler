@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -27,6 +28,7 @@ class CandidateRecord:
     vulnerability_ids: tuple[str, ...]
     source_url: str
     source_commit: str
+    claim_token: str = ""
 
 
 class StockpileStore:
@@ -64,6 +66,7 @@ class StockpileStore:
             raise ValueError("candidate limit must be between 1 and 100")
         if not 1 <= stale_after_seconds <= 86400:
             raise ValueError("claim timeout must be between 1 and 86400 seconds")
+        claim_token = uuid.uuid4().hex
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -86,13 +89,15 @@ class StockpileStore:
                 UPDATE stockpile_candidates AS candidate
                 SET conversion_status = 'converting',
                     conversion_claimed_at = CURRENT_TIMESTAMP,
+                    conversion_claim_token = %s,
                     conversion_error = NULL
                 FROM selected
                 WHERE candidate.candidate_id = selected.candidate_id
                 RETURNING candidate.candidate_id, candidate.vulnerability_ids,
-                          candidate.source_url, candidate.source_commit
+                          candidate.source_url, candidate.source_commit,
+                          candidate.conversion_claim_token
                 """,
-                (stale_after_seconds, limit),
+                (stale_after_seconds, limit, claim_token),
             )
             rows = cursor.fetchall()
             names = [column.name for column in cursor.description]
@@ -102,33 +107,73 @@ class StockpileStore:
                 vulnerability_ids=tuple(row["vulnerability_ids"]),
                 source_url=str(row["source_url"]),
                 source_commit=str(row["source_commit"]),
+                claim_token=str(row["conversion_claim_token"]),
             )
             for raw in rows
             for row in [raw if isinstance(raw, dict) else dict(zip(names, raw, strict=True))]
         ]
 
-    def mark_candidate(self, candidate_id: int, status: str, error: str | None = None) -> None:
-        if status not in {"pending", "converting", "validated", "rejected"}:
+    def mark_candidate(
+        self, candidate_id: int, claim_token: str, status: str, error: str | None = None
+    ) -> bool:
+        if status not in {"validated", "rejected"}:
             raise ValueError("invalid conversion status")
+        if not claim_token:
+            raise ValueError("claim token is required")
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE stockpile_candidates
                 SET conversion_status = %s,
                     conversion_error = %s,
-                    conversion_claimed_at = CASE
-                        WHEN %s = 'converting' THEN CURRENT_TIMESTAMP
-                        ELSE NULL
-                    END
+                    conversion_claimed_at = NULL,
+                    conversion_claim_token = NULL
                 WHERE candidate_id = %s
+                  AND conversion_status = 'converting'
+                  AND conversion_claim_token = %s
                 """,
-                (status, error[:4096] if error else None, status, candidate_id),
+                (status, error[:4096] if error else None, candidate_id, claim_token),
             )
+            return cursor.rowcount == 1
 
-    def put(self, poc: NormalizedPoc, *, constraints: dict[str, Any], metadata: dict[str, Any]) -> None:
+    def publish_claimed(
+        self, candidate: CandidateRecord, poc: NormalizedPoc,
+        *, constraints: dict[str, Any], metadata: dict[str, Any]
+    ) -> bool:
+        if not candidate.claim_token:
+            raise ValueError("claim token is required")
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
+                SELECT candidate_id FROM stockpile_candidates
+                WHERE candidate_id = %s AND conversion_status = 'converting'
+                  AND conversion_claim_token = %s
+                FOR UPDATE
+                """,
+                (candidate.candidate_id, candidate.claim_token),
+            )
+            if cursor.fetchone() is None:
+                return False
+            self._put(cursor, poc, constraints=constraints, metadata=metadata)
+            cursor.execute(
+                """
+                UPDATE stockpile_candidates
+                SET conversion_status = 'validated', conversion_error = NULL,
+                    conversion_claimed_at = NULL, conversion_claim_token = NULL
+                WHERE candidate_id = %s
+                """,
+                (candidate.candidate_id,),
+            )
+            return True
+
+    def put(self, poc: NormalizedPoc, *, constraints: dict[str, Any], metadata: dict[str, Any]) -> None:
+        with self._connect() as connection, connection.cursor() as cursor:
+            self._put(cursor, poc, constraints=constraints, metadata=metadata)
+
+    @staticmethod
+    def _put(cursor, poc: NormalizedPoc, *, constraints: dict[str, Any], metadata: dict[str, Any]) -> None:
+        cursor.execute(
+            """
                 INSERT INTO stockpile_pocs (
                     poc_id, vulnerability_ids, source_url, source_commit,
                     target_constraints, runtime, content, sha256, metadata,
@@ -145,18 +190,18 @@ class StockpileStore:
                     conversion_status = 'validated',
                     enabled = TRUE,
                     updated_at = CURRENT_TIMESTAMP
-                """,
-                (
-                    poc.poc_id,
-                    list(poc.vulnerability_ids),
-                    poc.source_url,
-                    poc.source_commit,
-                    json.dumps(constraints),
-                    poc.source,
-                    poc.sha256,
-                    json.dumps(metadata),
-                ),
-            )
+            """,
+            (
+                poc.poc_id,
+                list(poc.vulnerability_ids),
+                poc.source_url,
+                poc.source_commit,
+                json.dumps(constraints),
+                poc.source,
+                poc.sha256,
+                json.dumps(metadata),
+            ),
+        )
 
     def lookup(self, vulnerability_id: str, *, target_triple: str | None = None) -> list[PocRecord]:
         vulnerability = normalize_vulnerability_ids([vulnerability_id])[0]
