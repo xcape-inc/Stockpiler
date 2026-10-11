@@ -13,10 +13,15 @@ from .contract import validate_normalized_poc
 from .store import CandidateRecord, StockpileStore
 
 
-def convert(candidate: CandidateRecord, command: str, timeout: int = 600):
+def converter_arguments(command: str) -> list[str]:
     arguments = shlex.split(command)
     if not arguments:
         raise ValueError("STOCKPILER_CONVERTER_COMMAND is required")
+    return arguments
+
+
+def convert(candidate: CandidateRecord, command: str, timeout: int = 600):
+    arguments = converter_arguments(command)
     request = json.dumps(
         {
             "vulnerability_ids": candidate.vulnerability_ids,
@@ -57,16 +62,23 @@ def run_once(
     limit: int = 10,
     stale_after_seconds: int = 900,
 ) -> dict[str, int]:
+    converter_arguments(command)
     counts = {"validated": 0, "rejected": 0}
-    for candidate in store.claim_candidates(limit, stale_after_seconds):
+    if not 1 <= limit <= 100:
+        raise ValueError("candidate limit must be between 1 and 100")
+    for _ in range(limit):
+        # Claim just before conversion so later rows cannot expire while queued.
+        claimed = store.claim_candidates(1, stale_after_seconds)
+        if not claimed:
+            break
+        candidate = claimed[0]
         try:
             poc, constraints, metadata = convert(candidate, command)
-            store.put(poc, constraints=constraints, metadata=metadata)
-            store.mark_candidate(candidate.candidate_id, "validated")
-            counts["validated"] += 1
+            if store.publish_claimed(candidate, poc, constraints=constraints, metadata=metadata):
+                counts["validated"] += 1
         except (OSError, subprocess.SubprocessError, ValueError) as error:
-            store.mark_candidate(candidate.candidate_id, "rejected", str(error))
-            counts["rejected"] += 1
+            if store.mark_candidate(candidate.candidate_id, candidate.claim_token, "rejected", str(error)):
+                counts["rejected"] += 1
     return counts
 
 

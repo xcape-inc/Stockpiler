@@ -7,12 +7,16 @@ CREATE TABLE IF NOT EXISTS stockpile_candidates (
     conversion_status text NOT NULL DEFAULT 'pending'
         CHECK (conversion_status IN ('pending', 'converting', 'validated', 'rejected')),
     conversion_claimed_at timestamptz,
+    conversion_claim_token text,
     conversion_error text,
     UNIQUE (source_url, source_commit)
 );
 
 ALTER TABLE stockpile_candidates
     ADD COLUMN IF NOT EXISTS conversion_claimed_at timestamptz;
+
+ALTER TABLE stockpile_candidates
+    ADD COLUMN IF NOT EXISTS conversion_claim_token text;
 
 CREATE TABLE IF NOT EXISTS stockpile_pocs (
     poc_id text PRIMARY KEY,

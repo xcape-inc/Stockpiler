@@ -27,10 +27,12 @@ shell. Converter receives provenance JSON on stdin and returns normalized source
 as base64 JSON. Invalid Python or any signature other than `run(payload)` is
 rejected and never enters active Stockpile.
 
-Converter workers atomically claim candidates with `FOR UPDATE SKIP LOCKED`
-and a status update in one transaction. Claims older than
+Converter workers atomically claim one candidate just before conversion with
+`FOR UPDATE SKIP LOCKED` and a status update in one transaction. Claims older than
 `STOCKPILER_CLAIM_TIMEOUT_SECONDS` (default `900`) are eligible for recovery by
-another worker. The converter profile may remain disabled without setting
+another worker. Each claim has a token. Publication and completion require the
+current token, so a recovered candidate cannot be overwritten by a stale worker.
+The converter profile may remain disabled without setting
 `STOCKPILER_CONVERTER_COMMAND`; a started converter still rejects an empty
 command before processing.
 
