@@ -138,7 +138,7 @@ class StockpileStore:
                 WHERE %s = ANY(vulnerability_ids)
                   AND conversion_status = 'validated'
                   AND enabled = TRUE
-                  AND (%s IS NULL OR target_constraints->>'target_triple' IS NULL
+                  AND (%s::text IS NULL OR target_constraints->>'target_triple' IS NULL
                        OR target_constraints->>'target_triple' = %s)
                 ORDER BY updated_at DESC, poc_id ASC
                 """,
