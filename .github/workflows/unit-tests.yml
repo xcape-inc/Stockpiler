@@ -1,0 +1,20 @@
+name: unit tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${ github.repository }-${ github.ref }
+  cancel-in-progress: true
+
+jobs:
+  suites:
+    uses: xcape-inc/ptaas/.github/workflows/pr-tests.yml@main
+    with:
+      from_service: true
+      suites: stockpiler
+      overlay_directory: stockpiler
+    secrets: inherit
