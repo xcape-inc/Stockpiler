@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: tests-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    uses: xcape-inc/ptaas/.github/workflows/coverage.yml@main
+    with:
+      from_service: true
+      suites: stockpiler
+      overlay_directory: stockpiler
+    secrets: inherit
