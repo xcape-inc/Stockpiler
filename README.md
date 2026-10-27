@@ -90,6 +90,15 @@ Data lives under `STOCKPILER_ROOT` (or `./data`, or a legacy checkout that alrea
 
 #### - MCP server (`mcp/server.py`) — read-only tools for remote clients: `search_cves`, `list_pocs`, `get_poc_context`, `read_poc_file`.
 
+### Tests
+
+In-process tests use a temporary collection. They do not clone PoCs or start the MCP server.
+
+```bash
+# from this directory
+uv run --python 3.12 --with pytest --no-project pytest tests
+```
+
 ### Dependencies:
 #### - `jq` - used to parse the JSON files for each CVE PoC within the PoC-in-GitHub repo
 #### - `wc` - used to get the line count of all captured CVEs and PoCs. Should be installed on Debian by default, but you may want to double check.

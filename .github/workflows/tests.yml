@@ -13,6 +13,8 @@ concurrency:
 
 jobs:
   coverage:
+    # This repository is public, so it cannot call the reusable workflow in
+    # private ptaas. The job name is the required status check context.
     name: coverage / report
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -23,5 +25,5 @@ jobs:
         run: |
           uv run --python 3.12 --no-project --isolated \
             --with pytest --with pytest-cov \
-            pytest --cov stockpiler --cov catalog \
+            pytest --cov stockpiler --cov catalog --cov stockpiler_lib --cov diff_nuclei_cves \
             --cov-branch --tb=short -p no:cacheprovider -q tests
