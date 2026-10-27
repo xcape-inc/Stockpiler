@@ -27,5 +27,5 @@ jobs:
         run: |
           uv run --python 3.12 --no-project --isolated \
             --with pytest --with pytest-cov \
-            pytest --cov stockpiler_lib --cov diff_nuclei_cves \
+            pytest --cov stockpiler --cov stockpiler_lib --cov diff_nuclei_cves \
             --cov-branch --tb=short -p no:cacheprovider -q tests
