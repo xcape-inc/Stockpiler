@@ -7,14 +7,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: unit-tests-${ github.repository }-${ github.ref }
+  group: unit-tests-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   suites:
-    uses: xcape-inc/ptaas/.github/workflows/pr-tests.yml@main
-    with:
-      from_service: true
-      suites: stockpiler
-      overlay_directory: stockpiler
-    secrets: inherit
+    # This repository is public, so it cannot call the reusable workflow in
+    # private ptaas. The job name is the required status check context.
+    name: suites / unit and regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Run the stockpiler unit tests
+        run: |
+          uv run --python 3.12 --no-project --isolated \
+            --with pytest \
+            pytest --tb=short -p no:cacheprovider -q tests
