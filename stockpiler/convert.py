@@ -7,6 +7,7 @@ import base64
 import json
 import os
 import shlex
+import shutil
 import subprocess
 
 from .contract import validate_normalized_poc
@@ -62,7 +63,9 @@ def run_once(
     limit: int = 10,
     stale_after_seconds: int = 900,
 ) -> dict[str, int]:
-    converter_arguments(command)
+    executable = converter_arguments(command)[0]
+    if shutil.which(executable) is None:
+        raise ValueError(f"STOCKPILER_CONVERTER_COMMAND executable not found: {executable}")
     counts = {"validated": 0, "rejected": 0}
     if not 1 <= limit <= 100:
         raise ValueError("candidate limit must be between 1 and 100")
