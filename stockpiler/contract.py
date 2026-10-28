@@ -40,6 +40,8 @@ def validate_normalized_poc(
     source_commit: str,
     source: bytes,
 ) -> NormalizedPoc:
+    if not isinstance(poc_id, str):
+        raise ValueError("invalid poc_id")
     normalized_id = poc_id.strip().lower()
     if not POC_ID.fullmatch(normalized_id):
         raise ValueError("invalid poc_id")

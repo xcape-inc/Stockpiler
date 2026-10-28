@@ -32,6 +32,24 @@ class ConvertTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in store.claim_candidates.call_args_list], [1, 1])
         self.assertEqual(store.publish_claimed.call_count, 2)
 
+    def test_invalid_converter_id_rejects_claim_and_continues_batch(self):
+        store = MagicMock()
+        first = CandidateRecord(1, ("CVE-2026-1001",), "https://github.com/example/one", "a" * 40, "first")
+        second = CandidateRecord(2, ("CVE-2026-1002",), "https://github.com/example/two", "b" * 40, "second")
+        store.claim_candidates.side_effect = [[first], [second]]
+        store.mark_candidate.return_value = True
+        store.publish_claimed.return_value = True
+        source = base64.b64encode(b"def run(payload):\n    return payload\n").decode()
+        output = [json.dumps({"poc_id": None, "source_base64": source}),
+                  json.dumps({"poc_id": "valid-second", "source_base64": source})]
+        with patch("stockpiler.convert.shutil.which", return_value="/usr/bin/converter"), \
+             patch("stockpiler.convert.subprocess.run") as run:
+            run.side_effect = [MagicMock(returncode=0, stdout=item, stderr="") for item in output]
+            self.assertEqual(run_once(store, "converter", limit=2), {"validated": 1, "rejected": 1})
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(store.mark_candidate.call_args.args[:3], (1, "first", "rejected"))
+        self.assertEqual(store.publish_claimed.call_args.args[0], second)
+
     def test_converter_output_must_implement_single_payload_contract(self):
         candidate = CandidateRecord(1, ("CVE-2026-1001",), "https://github.com/xcape-inc/fixture", "a" * 40)
         output = json.dumps({

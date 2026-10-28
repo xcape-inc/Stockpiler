@@ -1,8 +1,11 @@
 import os
+import base64
+import json
 import threading
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from stockpiler.contract import validate_normalized_poc
 from stockpiler.convert import run_once
@@ -11,6 +14,38 @@ from stockpiler.store import StockpileStore
 
 @unittest.skipUnless(os.getenv("STOCKPILE_TEST_DSN"), "STOCKPILE_TEST_DSN not configured")
 class PostgresClaimTests(unittest.TestCase):
+    def test_bad_converter_envelope_does_not_block_next_candidate(self):
+        import psycopg
+
+        dsn = os.environ["STOCKPILE_TEST_DSN"]
+        source_urls = [f"https://github.com/stockpiler-test/{uuid.uuid4()}" for _ in range(2)]
+        with psycopg.connect(dsn) as connection:
+            connection.execute((Path(__file__).parents[1] / "stockpiler" / "schema.sql").read_text())
+            for url in source_urls:
+                connection.execute(
+                    "INSERT INTO stockpile_candidates (vulnerability_ids, source_url, source_commit) VALUES (%s, %s, %s)",
+                    (["CVE-2026-1001"], url, "a" * 40),
+                )
+        source = base64.b64encode(b"def run(payload):\n    return payload\n").decode()
+        outputs = [json.dumps({"poc_id": None, "source_base64": source}),
+                   json.dumps({"poc_id": f"test-{uuid.uuid4()}", "source_base64": source})]
+        try:
+            with patch("stockpiler.convert.shutil.which", return_value="/usr/bin/converter"), \
+                 patch("stockpiler.convert.subprocess.run") as run:
+                run.side_effect = [MagicMock(returncode=0, stdout=item, stderr="") for item in outputs]
+                self.assertEqual(run_once(StockpileStore(dsn), "converter", limit=2),
+                                 {"validated": 1, "rejected": 1})
+            with psycopg.connect(dsn) as connection:
+                statuses = connection.execute(
+                    "SELECT conversion_status FROM stockpile_candidates WHERE source_url = ANY(%s) ORDER BY candidate_id",
+                    (source_urls,),
+                ).fetchall()
+            self.assertEqual(statuses, [("rejected",), ("validated",)])
+        finally:
+            with psycopg.connect(dsn) as connection:
+                connection.execute("DELETE FROM stockpile_candidates WHERE source_url = ANY(%s)", (source_urls,))
+                connection.execute("DELETE FROM stockpile_pocs WHERE poc_id = %s", (json.loads(outputs[1])["poc_id"],))
+
     def test_empty_converter_command_keeps_candidate_pending(self):
         import psycopg
 
