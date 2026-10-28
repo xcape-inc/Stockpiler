@@ -44,6 +44,11 @@ def convert(candidate: CandidateRecord, command: str, timeout: int = 600):
         raise ValueError(f"converter failed with exit code {completed.returncode}: {completed.stderr[-2048:]}")
     try:
         result = json.loads(completed.stdout)
+        if (not isinstance(result, dict) or not isinstance(result.get("poc_id"), str)
+                or not isinstance(result.get("source_base64"), str)
+                or not isinstance(result.get("target_constraints", {}), dict)
+                or not isinstance(result.get("metadata", {}), dict)):
+            raise ValueError("converter envelope must contain an ID, base64 source, and object metadata")
         source = base64.b64decode(result["source_base64"], validate=True)
         poc = validate_normalized_poc(
             poc_id=result["poc_id"],

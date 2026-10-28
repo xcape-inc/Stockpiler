@@ -50,6 +50,18 @@ class ConvertTests(unittest.TestCase):
         self.assertEqual(store.mark_candidate.call_args.args[:3], (1, "first", "rejected"))
         self.assertEqual(store.publish_claimed.call_args.args[0], second)
 
+    def test_malformed_converter_envelopes_are_rejected_before_publish(self):
+        candidate = CandidateRecord(1, ("CVE-2026-1001",), "https://github.com/example/one", "a" * 40)
+        source = base64.b64encode(b"def run(payload):\n    return payload\n").decode()
+        for envelope in ([], {"poc_id": None, "source_base64": source},
+                         {"poc_id": "valid", "source_base64": None},
+                         {"poc_id": "valid", "source_base64": source, "target_constraints": []},
+                         {"poc_id": "valid", "source_base64": source, "metadata": None}):
+            with self.subTest(envelope=envelope), patch("stockpiler.convert.subprocess.run") as run:
+                run.return_value = MagicMock(returncode=0, stdout=json.dumps(envelope), stderr="")
+                with self.assertRaisesRegex(ValueError, "invalid converter output"):
+                    convert(candidate, "converter")
+
     def test_converter_output_must_implement_single_payload_contract(self):
         candidate = CandidateRecord(1, ("CVE-2026-1001",), "https://github.com/xcape-inc/fixture", "a" * 40)
         output = json.dumps({
