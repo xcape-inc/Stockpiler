@@ -20,12 +20,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
-
       - name: Run the stockpiler tests with coverage
         run: |
           uv run --python 3.12 --no-project --isolated \
             --with pytest --with pytest-cov \
-            pytest --cov stockpiler_lib --cov diff_nuclei_cves \
+            pytest --cov stockpiler --cov catalog --cov stockpiler_lib --cov diff_nuclei_cves \
             --cov-branch --tb=short -p no:cacheprovider -q tests
